@@ -8,29 +8,75 @@
 </head>
 <body>
 <div id="app">
+
   <section id="lobby">
     <h1>2chat</h1>
-    <p>Приватный чат на двоих. E2E-шифрование, без регистрации.</p>
-    <button id="create" class="primary">Создать чат</button>
-    <p class="hint">Ссылка-приглашение — это и есть ключ. Передайте её собеседнику по защищённому каналу.</p>
+    <p>Приватный чат на двоих. E2E-шифрование, без сервера.</p>
+    <button id="create" class="primary">Создать новый чат</button>
+    <div class="sep">— или —</div>
+    <input id="inviteInput" placeholder="Вставьте ссылку-приглашение…">
+    <button id="joinBtn">Присоединиться</button>
+    <p class="hint">Соединение устанавливается вручную через короткие коды — их можно передать любым способом.</p>
   </section>
+
+  <section id="hostSetup" hidden>
+    <header>
+      <span>Создание чата</span>
+      <button id="hostCancel" class="ghost">Отмена</button>
+    </header>
+    <div class="setupBody">
+      <p class="label"><b>1.</b> Отправьте собеседнику эту ссылку:</p>
+      <div class="row">
+        <input id="hostInviteLink" readonly>
+        <button id="copyLinkBtn">Копировать</button>
+      </div>
+
+      <p class="label"><b>2.</b> И этот код (он для связи):</p>
+      <textarea id="hostOffer" readonly placeholder="Генерирую код…"></textarea>
+      <button id="copyOfferBtn">Копировать код</button>
+
+      <p class="label"><b>3.</b> Когда собеседник пришлёт <b>ответный код</b> — вставьте его сюда:</p>
+      <textarea id="hostAnswer" placeholder="Вставьте ответный код…"></textarea>
+      <button id="connectBtn" class="primary">Подключиться</button>
+
+      <div id="hostStatus" class="status"></div>
+    </div>
+  </section>
+
+  <section id="guestSetup" hidden>
+    <header>
+      <span>Подключение к чату</span>
+      <button id="guestCancel" class="ghost">Отмена</button>
+    </header>
+    <div class="setupBody">
+      <p class="label"><b>1.</b> Вставьте код, который прислал создатель чата:</p>
+      <textarea id="guestOffer" placeholder="Вставьте код от создателя…"></textarea>
+      <button id="genAnswerBtn" class="primary">Сгенерировать ответ</button>
+
+      <div id="guestAnswerBox" hidden>
+        <p class="label"><b>2.</b> Отправьте этот код обратно создателю:</p>
+        <textarea id="guestAnswer" readonly></textarea>
+        <button id="copyAnswerBtn">Копировать код</button>
+        <p class="hint">Как только создатель вставит его — соединение установится автоматически.</p>
+      </div>
+
+      <div id="guestStatus" class="status"></div>
+    </div>
+  </section>
+
   <section id="chat" hidden>
     <header>
-      <span id="status">Подключение…</span>
+      <span id="status">На связи</span>
       <button id="leave" class="ghost">Выйти</button>
     </header>
-    <div id="inviteBar">
-      <input id="inviteLink" readonly>
-      <button id="copyBtn">Копировать</button>
-    </div>
     <div id="messages"></div>
     <form id="msgForm" autocomplete="off">
       <input id="msgInput" placeholder="Сообщение…" autocomplete="off">
       <button type="submit">→</button>
     </form>
   </section>
+
 </div>
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -1,27 +1,42 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
 body { font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f1116; color: #e8eaee; }
+[hidden] { display: none !important; }
 #app { max-width: 720px; margin: 0 auto; height: 100vh; display: flex; flex-direction: column; }
-#lobby { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 12px; padding: 24px; text-align: center; }
+
+#lobby { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; gap: 10px; padding: 24px; text-align: center; }
 #lobby h1 { margin: 0; font-size: 42px; letter-spacing: 1px; }
-#lobby .hint { color: #7a8390; font-size: 13px; max-width: 380px; }
+#lobby .hint { color: #7a8390; font-size: 13px; max-width: 420px; margin-top: 8px; }
+#lobby .sep { color: #4a5260; font-size: 12px; margin: 6px 0; }
+
+#inviteInput { width: 100%; max-width: 420px; background: #141924; border: 1px solid #232936; color: #e8eaee; border-radius: 10px; padding: 10px 12px; font-size: 14px; outline: none; }
+#inviteInput:focus { border-color: #4f7cff; }
+#joinBtn { background: #2a3040; }
+
 button { border: none; border-radius: 10px; padding: 10px 16px; font-size: 15px; cursor: pointer; background: #2a3040; color: #e8eaee; }
 button.primary { background: #4f7cff; }
 button.primary:hover { background: #3d6bf0; }
 button.ghost { background: transparent; color: #8b93a1; }
 button.ghost:hover { color: #e8eaee; }
+
+#hostSetup, #guestSetup { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #1c212b; font-size: 14px; color: #aeb6c2; }
+.setupBody { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 6px; }
+.setupBody .label { margin: 8px 0 4px; color: #aeb6c2; font-size: 14px; }
+.setupBody .row { display: flex; gap: 8px; }
+.setupBody .row input { flex: 1; background: #141924; border: 1px solid #232936; color: #aeb6c2; border-radius: 8px; padding: 8px 10px; font-size: 12px; min-width: 0; }
+.setupBody textarea { width: 100%; min-height: 100px; background: #0a0d12; border: 1px solid #232936; color: #aeb6c2; border-radius: 8px; padding: 10px; font-family: ui-monospace, Menlo, monospace; font-size: 11px; resize: vertical; outline: none; word-break: break-all; }
+.setupBody textarea:focus { border-color: #4f7cff; }
+.setupBody button { margin-top: 2px; }
+.setupBody .status { color: #8b93a1; font-size: 13px; margin-top: 10px; }
+
 #chat { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #1c212b; font-size: 13px; color: #8b93a1; }
-#inviteBar { display: flex; gap: 8px; padding: 10px 16px; background: #141924; border-bottom: 1px solid #1c212b; }
-#inviteBar[hidden] { display: none; }
-#inviteLink { flex: 1; background: #0f1116; border: 1px solid #232936; color: #aeb6c2; border-radius: 8px; padding: 8px 10px; font-size: 12px; min-width: 0; }
-#copyBtn { padding: 8px 12px; font-size: 13px; }
 #messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
 .msg { max-width: 78%; padding: 8px 12px; border-radius: 14px; word-wrap: break-word; white-space: pre-wrap; }
 .msg.me { align-self: flex-end; background: #4f7cff; color: #fff; border-bottom-right-radius: 4px; }
 .msg.them { align-self: flex-start; background: #1c212b; color: #e8eaee; border-bottom-left-radius: 4px; }
+
 #msgForm { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid #1c212b; background: #0f1116; }
 #msgInput { flex: 1; background: #141924; border: 1px solid #232936; color: #e8eaee; border-radius: 10px; padding: 10px 12px; font-size: 15px; outline: none; }
 #msgInput:focus { border-color: #4f7cff; }
 #msgForm button { background: #4f7cff; padding: 10px 18px; }
-[hidden] { display: none !important; }
