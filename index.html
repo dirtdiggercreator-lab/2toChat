@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>2chat — приватный чат на двоих</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <section id="lobby">
+    <h1>2chat</h1>
+    <p>Приватный чат на двоих. E2E-шифрование, без регистрации.</p>
+    <button id="create" class="primary">Создать чат</button>
+    <p class="hint">Ссылка-приглашение — это и есть ключ. Передайте её собеседнику по защищённому каналу.</p>
+  </section>
+  <section id="chat" hidden>
+    <header>
+      <span id="status">Подключение…</span>
+      <button id="leave" class="ghost">Выйти</button>
+    </header>
+    <div id="inviteBar">
+      <input id="inviteLink" readonly>
+      <button id="copyBtn">Копировать</button>
+    </div>
+    <div id="messages"></div>
+    <form id="msgForm" autocomplete="off">
+      <input id="msgInput" placeholder="Сообщение…" autocomplete="off">
+      <button type="submit">→</button>
+    </form>
+  </section>
+</div>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
