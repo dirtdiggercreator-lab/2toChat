@@ -11,18 +11,26 @@ const RTC_CONFIG = {
   ],
 };
 
-let pc = null;
-let dc = null;
-let cryptoKey = null;
-let secret = null;
+let pc = null, dc = null, cryptoKey = null, secret = null, roomId = null;
+let wasBackgrounded = false;
 
 init();
 
 async function init() {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) wasBackgrounded = true;
+    else if (wasBackgrounded) {
+      wasBackgrounded = false;
+      const st = $('status');
+      if (st) st.textContent = 'Вкладка была в фоне. Если сообщения не идут — переподключитесь';
+    }
+  });
+
   const hash = location.hash.slice(1);
   if (hash && hash.length >= 20) {
     secret = hash;
-    cryptoKey = await deriveKey(secret, await deriveRoomId(secret));
+    roomId = await deriveRoomId(secret);
+    cryptoKey = await deriveKey(secret, roomId);
     const role = sessionStorage.getItem(SESSION_KEY + secret);
     if (role === 'host') await startHost();
     else await startGuest();
@@ -32,9 +40,7 @@ async function init() {
 }
 
 function show(section) {
-  ['lobby','hostSetup','guestSetup','chat'].forEach(s => {
-    $(s).hidden = s !== section;
-  });
+  ['lobby','hostSetup','guestSetup','chat'].forEach(s => $(s).hidden = s !== section);
 }
 function showLobby() {
   show('lobby');
@@ -44,7 +50,8 @@ function showLobby() {
 
 async function onHostCreate() {
   secret = generateSecret();
-  cryptoKey = await deriveKey(secret, await deriveRoomId(secret));
+  roomId = await deriveRoomId(secret);
+  cryptoKey = await deriveKey(secret, roomId);
   sessionStorage.setItem(SESSION_KEY + secret, 'host');
   location.hash = secret;
   startHost();
@@ -53,11 +60,11 @@ async function onHostCreate() {
 async function onJoinClick() {
   const url = $('inviteInput').value.trim();
   if (!url) return;
-  const m = url.match(/#(.{20,})$/);
-  if (!m) { alert('В ссылке нет ключа'); return; }
+  const m = url.match(/#([A-Za-z0-9_\-]{20,})$/);
+  if (!m) { alert('В ссылке нет ключа (ожидается # + 20 и более символов)'); return; }
   secret = m[1];
-  // ЭТО БЫЛ БАГ: ключ не вычислялся
-  cryptoKey = await deriveKey(secret, await deriveRoomId(secret));
+  roomId = await deriveRoomId(secret);
+  cryptoKey = await deriveKey(secret, roomId);
   sessionStorage.setItem(SESSION_KEY + secret, 'guest');
   location.hash = secret;
   startGuest();
@@ -70,6 +77,7 @@ async function startHost() {
   $('hostStatus').textContent = 'Готовлю код…';
 
   pc = new RTCPeerConnection(RTC_CONFIG);
+  watchPc(pc);
   dc = pc.createDataChannel('chat', { ordered: true });
   setupDC(dc);
 
@@ -77,23 +85,34 @@ async function startHost() {
   await pc.setLocalDescription(offer);
   await waitIce(pc);
 
-  $('hostOffer').value = encodeSdp(pc.localDescription);
-  $('hostStatus').textContent = 'Отправьте ссылку и код собеседнику, затем вставьте ответный код.';
+  $('hostOffer').value = 'O:' + encodeSdp(pc.localDescription);
+  $('hostStatus').textContent = 'Готово. Отправьте ссылку и код собеседнику.';
 }
 
-$('create').onclick = onHostCreate;
-$('joinBtn').onclick = onJoinClick;
+function watchPc(p) {
+  p.addEventListener('iceconnectionstatechange', () => {
+    if (p.iceConnectionState === 'failed') setStatus('ICE не установился — вероятно нужен TURN');
+    else if (p.iceConnectionState === 'disconnected') setStatus('Соединение потеряно');
+  });
+}
+function setStatus(s) { const el = $('status'); if (el) el.textContent = s; }
+
 $('copyLinkBtn').onclick = () => copyText($('hostInviteLink').value, $('copyLinkBtn'));
 $('copyOfferBtn').onclick = () => copyText($('hostOffer').value, $('copyOfferBtn'));
 
 $('connectBtn').onclick = async () => {
-  const code = $('hostAnswer').value.trim();
+  let code = $('hostAnswer').value.trim();
   if (!code) return;
+  if (code.startsWith('A:')) code = code.slice(2);
+  if (!code.startsWith('v=') && !/^[A-Za-z0-9_\-]+$/.test(code)) {
+    $('hostStatus').textContent = 'Неверный код. Скопируйте код целиком (начинается с "A:")';
+    return;
+  }
   try {
-    await pc.setRemoteDescription(decodeSdp(code));
+    await pc.setRemoteDescription(decodeSdp(code.replace(/^A:/, '')));
     $('hostStatus').textContent = 'Жду установления соединения…';
   } catch (e) {
-    $('hostStatus').textContent = 'Ошибка: ' + e.message;
+    $('hostStatus').textContent = 'Ошибка декодирования: ' + e.message;
   }
 };
 
@@ -110,10 +129,12 @@ async function startGuest() {
 }
 
 $('genAnswerBtn').onclick = async () => {
-  const code = $('guestOffer').value.trim();
+  let code = $('guestOffer').value.trim();
   if (!code) return;
+  if (code.startsWith('O:')) code = code.slice(2);
   try {
     pc = new RTCPeerConnection(RTC_CONFIG);
+    watchPc(pc);
     pc.ondatachannel = e => { dc = e.channel; setupDC(dc); };
 
     await pc.setRemoteDescription(decodeSdp(code));
@@ -121,9 +142,9 @@ $('genAnswerBtn').onclick = async () => {
     await pc.setLocalDescription(answer);
     await waitIce(pc);
 
-    $('guestAnswer').value = encodeSdp(pc.localDescription);
+    $('guestAnswer').value = 'A:' + encodeSdp(pc.localDescription);
     $('guestAnswerBox').hidden = false;
-    $('guestStatus').textContent = 'Отправьте код создателю.';
+    $('guestStatus').textContent = 'Отправьте код создателю (начинается с "A:").';
   } catch (e) {
     $('guestStatus').textContent = 'Ошибка: ' + e.message;
   }
@@ -139,13 +160,19 @@ $('guestCancel').onclick = () => {
 
 // ---------- COMMON ----------
 function setupDC(channel) {
-  channel.onopen = () => { show('chat'); };
+  const label = (cryptoKey ? '🔑 ' : '🔒 ') + (roomId ? roomId.slice(0,6) : '');
+  channel.onopen = () => {
+    show('chat');
+    setStatus(label + ' · канал открыт');
+    // Тестовый пинг
+    try { channel.send(JSON.stringify({ type: 'ping' })); } catch {}
+  };
   channel.onmessage = async e => {
     let data = e.data;
-    if (typeof data === 'string') {
-      try { data = JSON.parse(data); } catch { return; }
-    }
-    if (!data || data.type !== 'msg') return;
+    if (typeof data === 'string') { try { data = JSON.parse(data); } catch { return; } }
+    if (!data) return;
+    if (data.type === 'ping') { setStatus(label + ' · на связи ✓'); return; }
+    if (data.type !== 'msg') return;
     try {
       const text = await decrypt(cryptoKey, data.iv, data.ct);
       renderMessage(text, 'them');
@@ -154,20 +181,33 @@ function setupDC(channel) {
       renderMessage('[не удалось расшифровать]', 'them');
     }
   };
-  channel.onclose = () => { $('status').textContent = 'Собеседник отключился'; };
+  channel.onclose = () => setStatus(label + ' · собеседник отключился');
+  channel.onerror = err => {
+    console.error('dc error', err);
+    setStatus(label + ' · ошибка канала');
+  };
+  // Оповещение о разрыве ICE
+  if (pc) {
+    pc.addEventListener('iceconnectionstatechange', () => {
+      if (!pc) return;
+      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+        setStatus(label + ' · разрыв ICE (' + pc.iceConnectionState + ')');
+      }
+    });
+  }
 }
 
-function waitIce(pc, timeout = 5000) {
+function waitIce(p, timeout = 8000) {
   return new Promise(resolve => {
-    if (pc.iceGatheringState === 'complete') return resolve();
+    if (p.iceGatheringState === 'complete') return resolve();
     const done = () => {
-      pc.removeEventListener('icegatheringstatechange', onChange);
+      p.removeEventListener('icegatheringstatechange', onChange);
       clearTimeout(timer);
       resolve();
     };
-    const onChange = () => { if (pc.iceGatheringState === 'complete') done(); };
+    const onChange = () => { if (p.iceGatheringState === 'complete') done(); };
     const timer = setTimeout(done, timeout);
-    pc.addEventListener('icegatheringstatechange', onChange);
+    p.addEventListener('icegatheringstatechange', onChange);
   });
 }
 
@@ -193,7 +233,9 @@ function encodeSdp(desc) {
 function decodeSdp(str) {
   let s = str.replace(/-/g, '+').replace(/_/g, '/');
   while (s.length % 4) s += '=';
-  return JSON.parse(b64decode(s));
+  const decoded = b64decode(s);
+  if (!decoded.startsWith('{')) throw new Error('код повреждён или обрезан');
+  return JSON.parse(decoded);
 }
 
 async function copyText(text, btn) {
@@ -224,11 +266,19 @@ $('msgForm').addEventListener('submit', async e => {
   if (!text) return;
   input.value = '';
   renderMessage(text, 'me');
-  if (!dc || dc.readyState !== 'open') { $('status').textContent = 'Нет соединения'; return; }
-  let payload;
-  try { payload = await encrypt(cryptoKey, text); }
-  catch (err) { $('status').textContent = 'Ошибка шифрования: ' + err.message; return; }
-  dc.send(JSON.stringify({ type: 'msg', ...payload }));
+  if (!dc || dc.readyState !== 'open') {
+    setStatus('Нет соединения (dc.readyState=' + (dc ? dc.readyState : 'null') + ')');
+    return;
+  }
+  try {
+    const payload = await encrypt(cryptoKey, text);
+    dc.send(JSON.stringify({ type: 'msg', ...payload }));
+    setStatus('✓ отправлено');
+    setTimeout(() => setStatus('на связи'), 800);
+  } catch (err) {
+    console.error('send error', err);
+    setStatus('Ошибка отправки: ' + err.message);
+  }
 });
 
 $('leave').onclick = () => {
