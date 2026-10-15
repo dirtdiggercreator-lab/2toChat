@@ -22,8 +22,8 @@ async function init() {
   const hash = location.hash.slice(1);
   if (hash && hash.length >= 20) {
     secret = hash;
-    const role = sessionStorage.getItem(SESSION_KEY + secret);
     cryptoKey = await deriveKey(secret, await deriveRoomId(secret));
+    const role = sessionStorage.getItem(SESSION_KEY + secret);
     if (role === 'host') await startHost();
     else await startGuest();
   } else {
@@ -36,24 +36,29 @@ function show(section) {
     $(s).hidden = s !== section;
   });
 }
-function showLobby() { show('lobby'); $('create').onclick = onHostCreate; $('joinBtn').onclick = onJoinClick; }
+function showLobby() {
+  show('lobby');
+  $('create').onclick = onHostCreate;
+  $('joinBtn').onclick = onJoinClick;
+}
 
-$('create').onclick = onHostCreate;
-$('joinBtn').onclick = onJoinClick;
-
-function onHostCreate() {
+async function onHostCreate() {
   secret = generateSecret();
+  cryptoKey = await deriveKey(secret, await deriveRoomId(secret));
   sessionStorage.setItem(SESSION_KEY + secret, 'host');
   location.hash = secret;
   startHost();
 }
 
-function onJoinClick() {
+async function onJoinClick() {
   const url = $('inviteInput').value.trim();
   if (!url) return;
   const m = url.match(/#(.{20,})$/);
   if (!m) { alert('В ссылке нет ключа'); return; }
   secret = m[1];
+  // ЭТО БЫЛ БАГ: ключ не вычислялся
+  cryptoKey = await deriveKey(secret, await deriveRoomId(secret));
+  sessionStorage.setItem(SESSION_KEY + secret, 'guest');
   location.hash = secret;
   startGuest();
 }
@@ -76,6 +81,8 @@ async function startHost() {
   $('hostStatus').textContent = 'Отправьте ссылку и код собеседнику, затем вставьте ответный код.';
 }
 
+$('create').onclick = onHostCreate;
+$('joinBtn').onclick = onJoinClick;
 $('copyLinkBtn').onclick = () => copyText($('hostInviteLink').value, $('copyLinkBtn'));
 $('copyOfferBtn').onclick = () => copyText($('hostOffer').value, $('copyOfferBtn'));
 
@@ -142,7 +149,10 @@ function setupDC(channel) {
     try {
       const text = await decrypt(cryptoKey, data.iv, data.ct);
       renderMessage(text, 'them');
-    } catch (err) { console.error('decrypt failed', err); }
+    } catch (err) {
+      console.error('decrypt failed', err);
+      renderMessage('[не удалось расшифровать]', 'them');
+    }
   };
   channel.onclose = () => { $('status').textContent = 'Собеседник отключился'; };
 }
@@ -214,8 +224,10 @@ $('msgForm').addEventListener('submit', async e => {
   if (!text) return;
   input.value = '';
   renderMessage(text, 'me');
-  if (!dc || dc.readyState !== 'open') return;
-  const payload = await encrypt(cryptoKey, text);
+  if (!dc || dc.readyState !== 'open') { $('status').textContent = 'Нет соединения'; return; }
+  let payload;
+  try { payload = await encrypt(cryptoKey, text); }
+  catch (err) { $('status').textContent = 'Ошибка шифрования: ' + err.message; return; }
   dc.send(JSON.stringify({ type: 'msg', ...payload }));
 });
 
