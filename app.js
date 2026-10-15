@@ -39,6 +39,26 @@ async function init() {
   }
 }
 
+async function restoreHostUI() {
+  // Восстанавливаем offer после F5 — не пересоздаём PeerConnection,
+  // просто показываем старый код, чтобы можно было вставить ответ
+  const saved = sessionStorage.getItem('2chat-offer:' + secret);
+  if (!saved) return false;
+  $('hostInviteLink').value = location.origin + location.pathname + '#' + secret;
+  $('hostOffer').value = saved;
+  $('hostStatus').textContent = 'Восстановлено после обновления. Вставьте ответный код.';
+  return true;
+}
+
+function restoreGuestUI() {
+  const saved = sessionStorage.getItem('2chat-answer:' + secret);
+  if (!saved) return false;
+  $('guestAnswer').value = saved;
+  $('guestAnswerBox').hidden = false;
+  $('guestStatus').textContent = 'Восстановлено после обновления. Отправьте код создателю.';
+  return true;
+}
+
 function show(section) {
   ['lobby','hostSetup','guestSetup','chat'].forEach(s => $(s).hidden = s !== section);
 }
@@ -73,6 +93,8 @@ async function onJoinClick() {
 // ---------- HOST ----------
 async function startHost() {
   show('hostSetup');
+  if (await restoreHostUI()) return;
+
   $('hostInviteLink').value = location.origin + location.pathname + '#' + secret;
   $('hostStatus').textContent = 'Готовлю код…';
 
@@ -85,7 +107,9 @@ async function startHost() {
   await pc.setLocalDescription(offer);
   await waitIce(pc);
 
-  $('hostOffer').value = 'O:' + encodeSdp(pc.localDescription);
+  const offerCode = 'O:' + encodeSdp(pc.localDescription);
+  $('hostOffer').value = offerCode;
+  sessionStorage.setItem('2chat-offer:' + secret, offerCode);
   $('hostStatus').textContent = 'Готово. Отправьте ссылку и код собеседнику.';
 }
 
@@ -126,6 +150,7 @@ $('hostCancel').onclick = () => {
 // ---------- GUEST ----------
 async function startGuest() {
   show('guestSetup');
+  restoreGuestUI();
 }
 
 $('genAnswerBtn').onclick = async () => {
@@ -142,7 +167,9 @@ $('genAnswerBtn').onclick = async () => {
     await pc.setLocalDescription(answer);
     await waitIce(pc);
 
-    $('guestAnswer').value = 'A:' + encodeSdp(pc.localDescription);
+    const ansCode = 'A:' + encodeSdp(pc.localDescription);
+    $('guestAnswer').value = ansCode;
+    sessionStorage.setItem('2chat-answer:' + secret, ansCode);
     $('guestAnswerBox').hidden = false;
     $('guestStatus').textContent = 'Отправьте код создателю (начинается с "A:").';
   } catch (e) {
@@ -231,10 +258,17 @@ function encodeSdp(desc) {
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 function decodeSdp(str) {
-  let s = str.replace(/-/g, '+').replace(/_/g, '/');
+  // Убираем ВСЁ, кроме символов base64 (защита от пробелов/переводов строк из мессенджеров)
+  let s = String(str).replace(/[^A-Za-z0-9\-_+/=]/g, '');
+  // Оставляем только один сегмент (если случайно склеилось два кода)
+  s = s.replace(/-/g, '+').replace(/_/g, '/');
+  // Убираем любые паддинги и добавляем заново корректно
+  s = s.replace(/=+$/, '');
   while (s.length % 4) s += '=';
   const decoded = b64decode(s);
-  if (!decoded.startsWith('{')) throw new Error('код повреждён или обрезан');
+  if (!decoded.startsWith('{')) {
+    throw new Error('код повреждён или обрезан при копировании. Перешлите код заново одним куском');
+  }
   return JSON.parse(decoded);
 }
 
