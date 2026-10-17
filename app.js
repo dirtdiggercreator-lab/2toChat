@@ -42,7 +42,6 @@ async function init() {
     showLobby();
   }
 }
-}
 
 function showLobby() { $('lobby').hidden = false; $('chat').hidden = true; }
 function showChat() { $('lobby').hidden = true; $('chat').hidden = false; }
