@@ -27,7 +27,6 @@ init().catch(err => {
 async function init() {
   $('create').addEventListener('click', onHostCreate);
   $('joinBtn').addEventListener('click', onJoinClick);
-
   const hash = location.hash.replace(/^#/, '');
   if (hash && hash.length >= 20) {
     secret = hash;
@@ -40,14 +39,8 @@ async function init() {
   }
 }
 
-function showLobby() {
-  $('lobby').hidden = false;
-  $('chat').hidden = true;
-}
-function showChat() {
-  $('lobby').hidden = true;
-  $('chat').hidden = false;
-}
+function showLobby() { $('lobby').hidden = false; $('chat').hidden = true; }
+function showChat() { $('lobby').hidden = true; $('chat').hidden = false; }
 
 async function onHostCreate() {
   try {
@@ -58,10 +51,7 @@ async function onHostCreate() {
     $('inviteLink').value = location.origin + location.pathname + '#' + secret;
     showChat();
     connect();
-  } catch (err) {
-    console.error(err);
-    alert('Ошибка создания: ' + err.message);
-  }
+  } catch (err) { alert('Ошибка: ' + err.message); }
 }
 
 async function onJoinClick() {
@@ -76,76 +66,44 @@ async function onJoinClick() {
     $('inviteLink').value = location.origin + location.pathname + '#' + secret;
     showChat();
     connect();
-  } catch (err) {
-    console.error(err);
-    alert('Ошибка подключения: ' + err.message);
-  }
+  } catch (err) { alert('Ошибка: ' + err.message); }
 }
 
 function connect() {
   const url = WORKER_URL + '/room/' + roomId;
   setBaseStatus('Подключение…');
-  try { ws = new WebSocket(url); }
-  catch (e) { setBaseStatus('Ошибка: ' + e.message); return; }
-
+  try { ws = new WebSocket(url); } catch (e) { setBaseStatus('Ошибка: ' + e.message); return; }
   ws.onopen = () => {
     reconnectDelay = 800;
-    while (pendingMessages.length) {
-      try { ws.send(pendingMessages.shift()); } catch {}
-    }
+    while (pendingMessages.length) { try { ws.send(pendingMessages.shift()); } catch {} }
   };
-  ws.onmessage = e => {
-    let data;
-    try { data = JSON.parse(e.data); } catch { return; }
-    handleIncoming(data);
-  };
-  ws.onclose = () => {
-    setBaseStatus('Переподключение…');
-    setTimeout(connect, reconnectDelay);
-    reconnectDelay = Math.min(reconnectDelay * 1.6, 15000);
-  };
+  ws.onmessage = e => { let d; try { d = JSON.parse(e.data); } catch { return; } handleIncoming(d); };
+  ws.onclose = () => { setBaseStatus('Переподключение…'); setTimeout(connect, reconnectDelay); reconnectDelay = Math.min(reconnectDelay * 1.6, 15000); };
   ws.onerror = () => setBaseStatus('Ошибка сети, переподключение…');
 }
 
 function send(obj) {
   const str = typeof obj === 'string' ? obj : JSON.stringify(obj);
-  if (ws && ws.readyState === 1) {
-    try { ws.send(str); return; } catch {}
-  }
+  if (ws && ws.readyState === 1) { try { ws.send(str); return; } catch {} }
   pendingMessages.push(str);
 }
 
 async function handleIncoming(data) {
   if (!data || !data.type) return;
-
-  if (data.type === 'presence') {
-    setBaseStatus(data.count >= 2 ? 'На связи' : 'Ждём собеседника…');
-    return;
-  }
+  if (data.type === 'presence') { setBaseStatus(data.count >= 2 ? 'На связи' : 'Ждём собеседника…'); return; }
   if (data.type === 'typing') { flashStatus('✍ печатает…'); return; }
-
   if (data.type === 'msg') {
     if (data.id && renderedIds.has(data.id)) return;
     if (data.id) renderedIds.add(data.id);
-    try {
-      const text = await decrypt(cryptoKey, data.iv, data.ct);
-      renderMessage(text, 'them');
-    } catch (err) {
-      console.error(err);
-      renderMessage('[не расшифровано]', 'them');
-    }
+    try { renderMessage(await decrypt(cryptoKey, data.iv, data.ct), 'them'); }
+    catch (err) { renderMessage('[не расшифровано]', 'them'); }
     return;
   }
-
-  if (data.type === 'file-start') {
-    currentFile = { id: data.msgId, name: data.name, mime: data.mime, chunks: [], iv: null };
-    return;
-  }
+  if (data.type === 'file-start') { currentFile = { id: data.msgId, name: data.name, mime: data.mime, chunks: [], iv: null }; return; }
   if (data.type === 'file-chunk') {
     if (!currentFile || currentFile.id !== data.msgId) return;
     const bytes = b64ToBytes(data.data);
-    if (!currentFile.iv) currentFile.iv = bytes;
-    else currentFile.chunks.push(bytes);
+    if (!currentFile.iv) currentFile.iv = bytes; else currentFile.chunks.push(bytes);
     return;
   }
   if (data.type === 'file-end') {
@@ -160,7 +118,7 @@ async function handleIncoming(data) {
       for (const c of f.chunks) { ct.set(c, off); off += c.byteLength; }
       const plain = await decryptBytes(cryptoKey, f.iv, ct);
       renderFile({ name: f.name, type: f.mime, blob: new Blob([plain], { type: f.mime }) }, 'them');
-    } catch (err) { console.error(err); renderMessage('[файл не расшифрован]', 'them'); }
+    } catch (err) { renderMessage('[файл не расшифрован]', 'them'); }
     return;
   }
 }
@@ -179,37 +137,31 @@ $('msgForm').addEventListener('submit', async e => {
   if (!text) return;
   input.value = '';
   renderMessage(text, 'me');
-  const id = uid();
+  const id = Math.random().toString(36).slice(2, 11);
   renderedIds.add(id);
   const payload = await encrypt(cryptoKey, text);
   send({ type: 'msg', id, ...payload });
 });
 
-$('attachBtn').addEventListener('click', e => {
-  e.preventDefault();
-  $('fileInput').click();
-});
+$('attachBtn').addEventListener('click', e => { e.preventDefault(); $('fileInput').click(); });
 $('fileInput').addEventListener('change', async e => {
   const file = e.target.files[0];
   e.target.value = '';
   if (!file) return;
   if (file.size > FILE_MAX) { alert('Максимум 8 МБ'); return; }
-  try { await sendFile(file); }
-  catch (err) { console.error(err); alert('Ошибка: ' + err.message); }
+  try { await sendFile(file); } catch (err) { alert('Ошибка: ' + err.message); }
 });
 
 async function sendFile(file) {
-  const msgId = uid();
+  const msgId = Math.random().toString(36).slice(2, 11);
   renderedIds.add(msgId);
   renderFile({ name: file.name, type: file.type || 'application/octet-stream', blob: file }, 'me');
   setBaseStatus('шифрую файл…');
   const buf = await file.arrayBuffer();
   const { iv, ct } = await encryptBytes(cryptoKey, buf);
   const mime = file.type || 'application/octet-stream';
-
   send({ type: 'file-start', msgId, name: file.name, mime });
   send({ type: 'file-chunk', msgId, data: bytesToB64(iv) });
-
   const total = ct.byteLength;
   let sent = 0;
   for (let i = 0; i < total; i += CHUNK) {
@@ -267,7 +219,6 @@ function flashStatus(t, ms = 2200) {
   typingTimer = setTimeout(() => { el.textContent = baseStatus; el.classList.remove('typing'); }, ms);
 }
 
-function uid() { return Math.random().toString(36).slice(2, 11); }
 function bytesToB64(u8) {
   let bin = '';
   const c = 0x8000;
@@ -285,10 +236,7 @@ function b64ToBytes(b64) {
 $('copyBtn').addEventListener('click', async () => {
   const val = $('inviteLink').value;
   try { await navigator.clipboard.writeText(val); }
-  catch {
-    $('inviteLink').select();
-    document.execCommand('copy');
-  }
+  catch { $('inviteLink').select(); document.execCommand('copy'); }
   $('copyBtn').textContent = '✓';
   setTimeout(() => ($('copyBtn').textContent = 'Копировать'), 1200);
 });
