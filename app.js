@@ -279,3 +279,36 @@ const leaveBtn = document.getElementById('leave');
 if (leaveBtn) {
   leaveBtn.addEventListener('click', () => localStorage.removeItem('2chat_secret'));
 }
+
+// --- Голосовые сообщения ---
+let mediaRecorder;
+let audioChunks = [];
+const micBtn = document.getElementById('micBtn');
+if (micBtn) {
+  micBtn.addEventListener('click', async () => {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      mediaRecorder.stop();
+      micBtn.classList.remove('recording');
+      micBtn.textContent = '🎤';
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+      mediaRecorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        const file = new File([blob], 'Голосовое_' + Date.now() + '.webm', { type: 'audio/webm' });
+        try { await sendFile(file); } catch (err) { alert('Ошибка отправки: ' + err.message); }
+      };
+      mediaRecorder.start();
+      micBtn.classList.add('recording');
+      micBtn.textContent = '⏹';
+      setBaseStatus('Идёт запись...');
+    } catch (err) {
+      alert('Нет доступа к микрофону. Разрешите доступ в настройках браузера.');
+    }
+  });
+}

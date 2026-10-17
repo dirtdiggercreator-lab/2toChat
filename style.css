@@ -62,3 +62,7 @@ header, #inviteBar, #msgForm { flex-shrink: 0; }
 .file-info { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; }
 .file-download { text-decoration: none; background: rgba(255,255,255,0.2); padding: 4px 8px; border-radius: 6px; color: inherit; font-size: 16px; }
 .msg.me .file-download { background: rgba(0,0,0,0.2); }
+
+/* Стили для записи голоса */
+.recording { background: #ff4d4d !important; color: white; animation: pulse 1s infinite; }
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
