@@ -84,7 +84,15 @@ function connect() {
     while (pendingMessages.length) { try { ws.send(pendingMessages.shift()); } catch {} }
   };
   ws.onmessage = e => { let d; try { d = JSON.parse(e.data); } catch { return; } handleIncoming(d); };
-  ws.onclose = () => { setBaseStatus('Переподключение…'); setTimeout(connect, reconnectDelay); reconnectDelay = Math.min(reconnectDelay * 1.6, 15000); };
+  ws.onclose = (event) => {
+    if (event.code === 1006) {
+      setBaseStatus('Ошибка сети. Если вы используете VPN, попробуйте его отключить или сменить сервер.');
+    } else {
+      setBaseStatus('Переподключение…');
+    }
+    setTimeout(connect, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 1.6, 15000);
+  };
   ws.onerror = () => setBaseStatus('Ошибка сети, переподключение…');
 }
 
