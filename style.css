@@ -66,3 +66,13 @@ header, #inviteBar, #msgForm { flex-shrink: 0; }
 /* Стили для записи голоса */
 .recording { background: #ff4d4d !important; color: white; animation: pulse 1s infinite; }
 @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+
+/* --- ФИКС ФОРМЫ ВВОДА (ШАГ 1) --- */
+#msgForm { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-top: 1px solid #1c212b; background: #0f1116; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+#msgInput { flex: 1; min-width: 0; background: #141924; border: 1px solid #232936; color: #e8eaee; border-radius: 20px; padding: 10px 16px; font-size: 16px; outline: none; }
+#msgInput:focus { border-color: #4f7cff; }
+
+#attachBtn, #micBtn { background: transparent !important; color: #8b93a1 !important; padding: 0 !important; font-size: 20px !important; border-radius: 50% !important; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+#attachBtn:active, #micBtn:active { background: #1c212b !important; }
+
+#msgForm button[type="submit"] { background: #4f7cff !important; color: white !important; padding: 0 !important; font-size: 18px !important; border-radius: 50% !important; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
