@@ -76,3 +76,9 @@ header, #inviteBar, #msgForm { flex-shrink: 0; }
 #attachBtn:active, #micBtn:active { background: #1c212b !important; }
 
 #msgForm button[type="submit"] { background: #4f7cff !important; color: white !important; padding: 0 !important; font-size: 18px !important; border-radius: 50% !important; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+/* --- ЖЕСТКИЙ ФИКС: ФОРМА ВСЕГДА ВНИЗУ --- */
+#app { height: 100% !important; height: 100dvh !important; display: flex; flex-direction: column; overflow: hidden; }
+#chat { flex: 1 !important; display: flex !important; flex-direction: column !important; overflow: hidden !important; min-height: 0 !important; }
+#messages { flex: 1 !important; overflow-y: auto !important; }
+#msgForm { flex-shrink: 0 !important; margin-top: auto; }
