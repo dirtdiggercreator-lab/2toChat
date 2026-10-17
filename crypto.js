@@ -45,3 +45,32 @@ export async function decrypt(key, ivB64, ctB64) {
   );
   return dec.decode(pt);
 }
+
+/* --- добавлено для совместимости с app.js --- */
+function _2chatB64u(buf) {
+  const b = new Uint8Array(buf);
+  let s = '';
+  for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+  return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function _2chatB64uDec(s) {
+  s = String(s).replace(/-/g,'+').replace(/_/g,'/');
+  while (s.length % 4) s += '=';
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+export async function encryptBytes(key, bytes) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes);
+  return { iv: _2chatB64u(iv), ct: _2chatB64u(ct) };
+}
+export async function decryptBytes(key, ivB64, ctB64) {
+  const pt = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: _2chatB64uDec(ivB64) },
+    key,
+    _2chatB64uDec(ctB64)
+  );
+  return new Uint8Array(pt);
+}
