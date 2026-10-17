@@ -27,9 +27,13 @@ init().catch(err => {
 async function init() {
   $('create').addEventListener('click', onHostCreate);
   $('joinBtn').addEventListener('click', onJoinClick);
-  const hash = location.hash.replace(/^#/, '');
+  
+  let hash = location.hash.replace(/^#/, '');
+
   if (hash && hash.length >= 20) {
     secret = hash;
+    localStorage.setItem('2chat_secret', secret);
+    history.replaceState(null, '', '#' + secret);
     roomId = await deriveRoomId(secret);
     cryptoKey = await deriveKey(secret, roomId);
     showChat();
@@ -38,6 +42,7 @@ async function init() {
     showLobby();
   }
 }
+}
 
 function showLobby() { $('lobby').hidden = false; $('chat').hidden = true; }
 function showChat() { $('lobby').hidden = true; $('chat').hidden = false; }
@@ -45,6 +50,7 @@ function showChat() { $('lobby').hidden = true; $('chat').hidden = false; }
 async function onHostCreate() {
   try {
     secret = generateSecret();
+    localStorage.setItem("2chat_secret", secret);
     roomId = await deriveRoomId(secret);
     cryptoKey = await deriveKey(secret, roomId);
     history.replaceState(null, '', '#' + secret);
@@ -60,6 +66,7 @@ async function onJoinClick() {
   if (!m) { alert('В ссылке нет ключа'); return; }
   try {
     secret = m[1];
+    localStorage.setItem("2chat_secret", secret);
     roomId = await deriveRoomId(secret);
     cryptoKey = await deriveKey(secret, roomId);
     history.replaceState(null, '', '#' + secret);
@@ -266,3 +273,9 @@ $('leave').addEventListener('click', () => {
   history.replaceState(null, '', location.pathname);
   location.reload();
 });
+
+// Очистка памяти при выходе
+const leaveBtn = document.getElementById('leave');
+if (leaveBtn) {
+  leaveBtn.addEventListener('click', () => localStorage.removeItem('2chat_secret'));
+}
