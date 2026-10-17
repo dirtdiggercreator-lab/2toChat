@@ -64,13 +64,11 @@ function _2chatB64uDec(s) {
 export async function encryptBytes(key, bytes) {
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, bytes);
-  return { iv: _2chatB64u(iv), ct: _2chatB64u(ct) };
+  return { iv: iv, ct: new Uint8Array(ct) };
 }
-export async function decryptBytes(key, ivB64, ctB64) {
-  const pt = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: _2chatB64uDec(ivB64) },
-    key,
-    _2chatB64uDec(ctB64)
-  );
+export async function decryptBytes(key, iv, ct) {
+  const ivU8 = iv instanceof Uint8Array ? iv : new Uint8Array(iv);
+  const ctU8 = ct instanceof Uint8Array ? ct : new Uint8Array(ct);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivU8 }, key, ctU8);
   return new Uint8Array(pt);
 }

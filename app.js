@@ -253,7 +253,14 @@ function flashStatus(t, ms = 2200) {
   typingTimer = setTimeout(() => { el.textContent = baseStatus; el.classList.remove('typing'); }, ms);
 }
 
-function bytesToB64(u8) {
+function bytesToB64(data) {
+  let u8 = data;
+  if (data instanceof ArrayBuffer) u8 = new Uint8Array(data);
+  else if (data && data.buffer instanceof ArrayBuffer && !(data instanceof Uint8Array)) {
+    u8 = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  } else if (!(data instanceof Uint8Array)) {
+    u8 = new Uint8Array(Object.values(data));
+  }
   let bin = '';
   const c = 0x8000;
   for (let i = 0; i < u8.length; i += c)
