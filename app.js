@@ -187,17 +187,37 @@ function renderFile(file, who) {
   const blob = file.blob || file;
   const url = URL.createObjectURL(blob);
   const type = file.type || blob.type || '';
+  const name = file.name || 'файл';
+  
   if (type.startsWith('image/')) {
     const img = document.createElement('img');
-    img.src = url;
-    img.onload = () => URL.revokeObjectURL(url);
+    img.src = url; img.className = 'file-preview';
     el.appendChild(img);
-  } else {
-    const a = document.createElement('a');
-    a.href = url; a.download = file.name || 'file';
-    a.textContent = '📎 ' + (file.name || 'файл');
-    el.appendChild(a);
+  } else if (type.startsWith('video/')) {
+    const video = document.createElement('video');
+    video.src = url; video.controls = true; video.className = 'file-preview';
+    el.appendChild(video);
+  } else if (type.startsWith('audio/')) {
+    const audio = document.createElement('audio');
+    audio.src = url; audio.controls = true; audio.className = 'file-preview';
+    el.appendChild(audio);
   }
+
+  const footer = document.createElement('div');
+  footer.className = 'file-footer';
+  
+  const info = document.createElement('span');
+  info.className = 'file-info';
+  info.textContent = name;
+  
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.className = 'file-download';
+  a.textContent = '⬇️';
+  
+  footer.appendChild(info);
+  footer.appendChild(a);
+  el.appendChild(footer);
+  
   appendToLog(el);
 }
 function appendToLog(el) {

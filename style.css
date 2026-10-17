@@ -54,3 +54,11 @@ header, #inviteBar, #msgForm { flex-shrink: 0; }
 
 #msgForm { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
 #msgInput { font-size: 16px; }
+
+/* --- Стили для файлов и превью --- */
+.msg.file { padding: 8px; display: flex; flex-direction: column; gap: 8px; min-width: 200px; }
+.file-preview { max-width: 100%; max-height: 300px; border-radius: 8px; display: block; }
+.file-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
+.file-info { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 170px; }
+.file-download { text-decoration: none; background: rgba(255,255,255,0.2); padding: 4px 8px; border-radius: 6px; color: inherit; font-size: 16px; }
+.msg.me .file-download { background: rgba(0,0,0,0.2); }
