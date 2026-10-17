@@ -1,300 +1,176 @@
-import { generateSecret, deriveRoomId, deriveKey, encrypt, decrypt } from './crypto.js';
+import { generateSecret, deriveRoomId, deriveKey, encrypt, decrypt,
+         encryptBytes, decryptBytes } from './crypto.js';
 
+const WORKER_URL = 'wss://chat2-relay.2chat-dirtdigger.workers.dev';
 const $ = id => document.getElementById(id);
-const SESSION_KEY = '2chat-role:';
+const FILE_MAX = 8 * 1024 * 1024;
+const CHUNK = 32 * 1024;
 
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun.cloudflare.com:3478' },
-    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
-  ],
-};
+let ws = null, cryptoKey = null, roomId = null, secret = null;
+let reconnectDelay = 800;
+let pendingMessages = [];
+let baseStatus = '';
+let typingTimer = null, lastTypingSent = 0;
+let currentFile = null;
+let renderedIds = new Set();
 
-let pc = null, dc = null, cryptoKey = null, secret = null, roomId = null;
-let wasBackgrounded = false;
+window.addEventListener('error', e => {
+  const el = document.getElementById('status');
+  if (el) el.textContent = 'Ошибка: ' + (e.message || 'неизвестная');
+});
 
-init();
+init().catch(err => {
+  console.error(err);
+  alert('Ошибка запуска: ' + err.message);
+});
 
 async function init() {
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden) wasBackgrounded = true;
-    else if (wasBackgrounded) {
-      wasBackgrounded = false;
-      const st = $('status');
-      if (st) st.textContent = 'Вкладка была в фоне. Если сообщения не идут — переподключитесь';
-    }
-  });
+  $('create').addEventListener('click', onHostCreate);
+  $('joinBtn').addEventListener('click', onJoinClick);
 
-  const hash = location.hash.slice(1);
+  const hash = location.hash.replace(/^#/, '');
   if (hash && hash.length >= 20) {
     secret = hash;
     roomId = await deriveRoomId(secret);
     cryptoKey = await deriveKey(secret, roomId);
-    const role = sessionStorage.getItem(SESSION_KEY + secret);
-    if (role === 'host') await startHost();
-    else await startGuest();
+    showChat();
+    connect();
   } else {
     showLobby();
   }
 }
 
-async function restoreHostUI() {
-  // Восстанавливаем offer после F5 — не пересоздаём PeerConnection,
-  // просто показываем старый код, чтобы можно было вставить ответ
-  const saved = sessionStorage.getItem('2chat-offer:' + secret);
-  if (!saved) return false;
-  $('hostInviteLink').value = location.origin + location.pathname + '#' + secret;
-  $('hostOffer').value = saved;
-  $('hostStatus').textContent = 'Восстановлено после обновления. Вставьте ответный код.';
-  return true;
-}
-
-function restoreGuestUI() {
-  const saved = sessionStorage.getItem('2chat-answer:' + secret);
-  if (!saved) return false;
-  $('guestAnswer').value = saved;
-  $('guestAnswerBox').hidden = false;
-  $('guestStatus').textContent = 'Восстановлено после обновления. Отправьте код создателю.';
-  return true;
-}
-
-function show(section) {
-  ['lobby','hostSetup','guestSetup','chat'].forEach(s => $(s).hidden = s !== section);
-}
 function showLobby() {
-  show('lobby');
-  $('create').onclick = onHostCreate;
-  $('joinBtn').onclick = onJoinClick;
+  $('lobby').hidden = false;
+  $('chat').hidden = true;
+}
+function showChat() {
+  $('lobby').hidden = true;
+  $('chat').hidden = false;
 }
 
 async function onHostCreate() {
-  secret = generateSecret();
-  roomId = await deriveRoomId(secret);
-  cryptoKey = await deriveKey(secret, roomId);
-  sessionStorage.setItem(SESSION_KEY + secret, 'host');
-  location.hash = secret;
-  startHost();
+  try {
+    secret = generateSecret();
+    roomId = await deriveRoomId(secret);
+    cryptoKey = await deriveKey(secret, roomId);
+    history.replaceState(null, '', '#' + secret);
+    $('inviteLink').value = location.origin + location.pathname + '#' + secret;
+    showChat();
+    connect();
+  } catch (err) {
+    console.error(err);
+    alert('Ошибка создания: ' + err.message);
+  }
 }
 
 async function onJoinClick() {
   const url = $('inviteInput').value.trim();
-  if (!url) return;
   const m = url.match(/#([A-Za-z0-9_\-]{20,})$/);
-  if (!m) { alert('В ссылке нет ключа (ожидается # + 20 и более символов)'); return; }
-  secret = m[1];
-  roomId = await deriveRoomId(secret);
-  cryptoKey = await deriveKey(secret, roomId);
-  sessionStorage.setItem(SESSION_KEY + secret, 'guest');
-  location.hash = secret;
-  startGuest();
+  if (!m) { alert('В ссылке нет ключа'); return; }
+  try {
+    secret = m[1];
+    roomId = await deriveRoomId(secret);
+    cryptoKey = await deriveKey(secret, roomId);
+    history.replaceState(null, '', '#' + secret);
+    $('inviteLink').value = location.origin + location.pathname + '#' + secret;
+    showChat();
+    connect();
+  } catch (err) {
+    console.error(err);
+    alert('Ошибка подключения: ' + err.message);
+  }
 }
 
-// ---------- HOST ----------
-async function startHost() {
-  show('hostSetup');
-  if (await restoreHostUI()) return;
+function connect() {
+  const url = WORKER_URL + '/room/' + roomId;
+  setBaseStatus('Подключение…');
+  try { ws = new WebSocket(url); }
+  catch (e) { setBaseStatus('Ошибка: ' + e.message); return; }
 
-  $('hostInviteLink').value = location.origin + location.pathname + '#' + secret;
-  $('hostStatus').textContent = 'Готовлю код…';
-
-  pc = new RTCPeerConnection(RTC_CONFIG);
-  watchPc(pc);
-  dc = pc.createDataChannel('chat', { ordered: true });
-  setupDC(dc);
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  await waitIce(pc);
-
-  const offerCode = 'O:' + encodeSdp(pc.localDescription);
-  $('hostOffer').value = offerCode;
-  sessionStorage.setItem('2chat-offer:' + secret, offerCode);
-  $('hostStatus').textContent = 'Готово. Отправьте ссылку и код собеседнику.';
+  ws.onopen = () => {
+    reconnectDelay = 800;
+    while (pendingMessages.length) {
+      try { ws.send(pendingMessages.shift()); } catch {}
+    }
+  };
+  ws.onmessage = e => {
+    let data;
+    try { data = JSON.parse(e.data); } catch { return; }
+    handleIncoming(data);
+  };
+  ws.onclose = () => {
+    setBaseStatus('Переподключение…');
+    setTimeout(connect, reconnectDelay);
+    reconnectDelay = Math.min(reconnectDelay * 1.6, 15000);
+  };
+  ws.onerror = () => setBaseStatus('Ошибка сети, переподключение…');
 }
 
-function watchPc(p) {
-  p.addEventListener('iceconnectionstatechange', () => {
-    if (p.iceConnectionState === 'failed') setStatus('ICE не установился — вероятно нужен TURN');
-    else if (p.iceConnectionState === 'disconnected') setStatus('Соединение потеряно');
-  });
+function send(obj) {
+  const str = typeof obj === 'string' ? obj : JSON.stringify(obj);
+  if (ws && ws.readyState === 1) {
+    try { ws.send(str); return; } catch {}
+  }
+  pendingMessages.push(str);
 }
-function setStatus(s) { const el = $('status'); if (el) el.textContent = s; }
 
-$('copyLinkBtn').onclick = () => copyText($('hostInviteLink').value, $('copyLinkBtn'));
-$('copyOfferBtn').onclick = () => copyText($('hostOffer').value, $('copyOfferBtn'));
+async function handleIncoming(data) {
+  if (!data || !data.type) return;
 
-$('connectBtn').onclick = async () => {
-  let code = $('hostAnswer').value.trim();
-  if (!code) return;
-  if (code.startsWith('A:')) code = code.slice(2);
-  if (!code.startsWith('v=') && !/^[A-Za-z0-9_\-]+$/.test(code)) {
-    $('hostStatus').textContent = 'Неверный код. Скопируйте код целиком (начинается с "A:")';
+  if (data.type === 'presence') {
+    setBaseStatus(data.count >= 2 ? 'На связи' : 'Ждём собеседника…');
     return;
   }
-  try {
-    await pc.setRemoteDescription(decodeSdp(code.replace(/^A:/, '')));
-    $('hostStatus').textContent = 'Жду установления соединения…';
-  } catch (e) {
-    $('hostStatus').textContent = 'Ошибка декодирования: ' + e.message;
-  }
-};
+  if (data.type === 'typing') { flashStatus('✍ печатает…'); return; }
 
-$('hostCancel').onclick = () => {
-  sessionStorage.removeItem(SESSION_KEY + secret);
-  try { pc?.close(); } catch {}
-  location.hash = '';
-  location.reload();
-};
-
-// ---------- GUEST ----------
-async function startGuest() {
-  show('guestSetup');
-  restoreGuestUI();
-}
-
-$('genAnswerBtn').onclick = async () => {
-  let code = $('guestOffer').value.trim();
-  if (!code) return;
-  if (code.startsWith('O:')) code = code.slice(2);
-  try {
-    pc = new RTCPeerConnection(RTC_CONFIG);
-    watchPc(pc);
-    pc.ondatachannel = e => { dc = e.channel; setupDC(dc); };
-
-    await pc.setRemoteDescription(decodeSdp(code));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    await waitIce(pc);
-
-    const ansCode = 'A:' + encodeSdp(pc.localDescription);
-    $('guestAnswer').value = ansCode;
-    sessionStorage.setItem('2chat-answer:' + secret, ansCode);
-    $('guestAnswerBox').hidden = false;
-    $('guestStatus').textContent = 'Отправьте код создателю (начинается с "A:").';
-  } catch (e) {
-    $('guestStatus').textContent = 'Ошибка: ' + e.message;
-  }
-};
-
-$('copyAnswerBtn').onclick = () => copyText($('guestAnswer').value, $('copyAnswerBtn'));
-
-$('guestCancel').onclick = () => {
-  try { pc?.close(); } catch {}
-  location.hash = '';
-  location.reload();
-};
-
-// ---------- COMMON ----------
-function setupDC(channel) {
-  const label = (cryptoKey ? '🔑 ' : '🔒 ') + (roomId ? roomId.slice(0,6) : '');
-  channel.onopen = () => {
-    show('chat');
-    setStatus(label + ' · канал открыт');
-    // Тестовый пинг
-    try { channel.send(JSON.stringify({ type: 'ping' })); } catch {}
-  };
-  channel.onmessage = async e => {
-    let data = e.data;
-    if (typeof data === 'string') { try { data = JSON.parse(data); } catch { return; } }
-    if (!data) return;
-    if (data.type === 'ping') { setStatus(label + ' · на связи ✓'); return; }
-    if (data.type !== 'msg') return;
+  if (data.type === 'msg') {
+    if (data.id && renderedIds.has(data.id)) return;
+    if (data.id) renderedIds.add(data.id);
     try {
       const text = await decrypt(cryptoKey, data.iv, data.ct);
       renderMessage(text, 'them');
     } catch (err) {
-      console.error('decrypt failed', err);
-      renderMessage('[не удалось расшифровать]', 'them');
+      console.error(err);
+      renderMessage('[не расшифровано]', 'them');
     }
-  };
-  channel.onclose = () => setStatus(label + ' · собеседник отключился');
-  channel.onerror = err => {
-    console.error('dc error', err);
-    setStatus(label + ' · ошибка канала');
-  };
-  // Оповещение о разрыве ICE
-  if (pc) {
-    pc.addEventListener('iceconnectionstatechange', () => {
-      if (!pc) return;
-      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
-        setStatus(label + ' · разрыв ICE (' + pc.iceConnectionState + ')');
-      }
-    });
+    return;
+  }
+
+  if (data.type === 'file-start') {
+    currentFile = { id: data.msgId, name: data.name, mime: data.mime, chunks: [], iv: null };
+    return;
+  }
+  if (data.type === 'file-chunk') {
+    if (!currentFile || currentFile.id !== data.msgId) return;
+    const bytes = b64ToBytes(data.data);
+    if (!currentFile.iv) currentFile.iv = bytes;
+    else currentFile.chunks.push(bytes);
+    return;
+  }
+  if (data.type === 'file-end') {
+    if (!currentFile || currentFile.id !== data.msgId) return;
+    const f = currentFile; currentFile = null;
+    if (f.id && renderedIds.has(f.id)) return;
+    if (f.id) renderedIds.add(f.id);
+    try {
+      const total = f.chunks.reduce((s, c) => s + c.byteLength, 0);
+      const ct = new Uint8Array(total);
+      let off = 0;
+      for (const c of f.chunks) { ct.set(c, off); off += c.byteLength; }
+      const plain = await decryptBytes(cryptoKey, f.iv, ct);
+      renderFile({ name: f.name, type: f.mime, blob: new Blob([plain], { type: f.mime }) }, 'them');
+    } catch (err) { console.error(err); renderMessage('[файл не расшифрован]', 'them'); }
+    return;
   }
 }
 
-function waitIce(p, timeout = 8000) {
-  return new Promise(resolve => {
-    if (p.iceGatheringState === 'complete') return resolve();
-    const done = () => {
-      p.removeEventListener('icegatheringstatechange', onChange);
-      clearTimeout(timer);
-      resolve();
-    };
-    const onChange = () => { if (p.iceGatheringState === 'complete') done(); };
-    const timer = setTimeout(done, timeout);
-    p.addEventListener('icegatheringstatechange', onChange);
-  });
-}
-
-function b64encode(str) {
-  const bytes = new TextEncoder().encode(str);
-  let bin = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-  }
-  return btoa(bin);
-}
-function b64decode(b64) {
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return new TextDecoder().decode(bytes);
-}
-function encodeSdp(desc) {
-  return b64encode(JSON.stringify({ type: desc.type, sdp: desc.sdp }))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-function decodeSdp(str) {
-  // Убираем ВСЁ, кроме символов base64 (защита от пробелов/переводов строк из мессенджеров)
-  let s = String(str).replace(/[^A-Za-z0-9\-_+/=]/g, '');
-  // Оставляем только один сегмент (если случайно склеилось два кода)
-  s = s.replace(/-/g, '+').replace(/_/g, '/');
-  // Убираем любые паддинги и добавляем заново корректно
-  s = s.replace(/=+$/, '');
-  while (s.length % 4) s += '=';
-  const decoded = b64decode(s);
-  if (!decoded.startsWith('{')) {
-    throw new Error('код повреждён или обрезан при копировании. Перешлите код заново одним куском');
-  }
-  return JSON.parse(decoded);
-}
-
-async function copyText(text, btn) {
-  try { await navigator.clipboard.writeText(text); }
-  catch {
-    const ta = document.createElement('textarea');
-    ta.value = text; document.body.appendChild(ta); ta.select();
-    document.execCommand('copy'); document.body.removeChild(ta);
-  }
-  const orig = btn.textContent;
-  btn.textContent = '✓ Скопировано';
-  setTimeout(() => (btn.textContent = orig), 1500);
-}
-
-function renderMessage(text, who) {
-  const el = document.createElement('div');
-  el.className = 'msg ' + who;
-  el.textContent = text;
-  const box = $('messages');
-  box.appendChild(el);
-  box.scrollTop = box.scrollHeight;
-}
+$('msgInput').addEventListener('input', () => {
+  const now = Date.now();
+  if (now - lastTypingSent < 1500) return;
+  lastTypingSent = now;
+  send({ type: 'typing' });
+});
 
 $('msgForm').addEventListener('submit', async e => {
   e.preventDefault();
@@ -303,24 +179,122 @@ $('msgForm').addEventListener('submit', async e => {
   if (!text) return;
   input.value = '';
   renderMessage(text, 'me');
-  if (!dc || dc.readyState !== 'open') {
-    setStatus('Нет соединения (dc.readyState=' + (dc ? dc.readyState : 'null') + ')');
-    return;
-  }
-  try {
-    const payload = await encrypt(cryptoKey, text);
-    dc.send(JSON.stringify({ type: 'msg', ...payload }));
-    setStatus('✓ отправлено');
-    setTimeout(() => setStatus('на связи'), 800);
-  } catch (err) {
-    console.error('send error', err);
-    setStatus('Ошибка отправки: ' + err.message);
-  }
+  const id = uid();
+  renderedIds.add(id);
+  const payload = await encrypt(cryptoKey, text);
+  send({ type: 'msg', id, ...payload });
 });
 
-$('leave').onclick = () => {
-  sessionStorage.removeItem(SESSION_KEY + secret);
-  try { dc?.close(); pc?.close(); } catch {}
-  location.hash = '';
+$('attachBtn').addEventListener('click', e => {
+  e.preventDefault();
+  $('fileInput').click();
+});
+$('fileInput').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  if (file.size > FILE_MAX) { alert('Максимум 8 МБ'); return; }
+  try { await sendFile(file); }
+  catch (err) { console.error(err); alert('Ошибка: ' + err.message); }
+});
+
+async function sendFile(file) {
+  const msgId = uid();
+  renderedIds.add(msgId);
+  renderFile({ name: file.name, type: file.type || 'application/octet-stream', blob: file }, 'me');
+  setBaseStatus('шифрую файл…');
+  const buf = await file.arrayBuffer();
+  const { iv, ct } = await encryptBytes(cryptoKey, buf);
+  const mime = file.type || 'application/octet-stream';
+
+  send({ type: 'file-start', msgId, name: file.name, mime });
+  send({ type: 'file-chunk', msgId, data: bytesToB64(iv) });
+
+  const total = ct.byteLength;
+  let sent = 0;
+  for (let i = 0; i < total; i += CHUNK) {
+    const slice = ct.subarray(i, Math.min(i + CHUNK, total));
+    send({ type: 'file-chunk', msgId, data: bytesToB64(slice) });
+    sent += slice.byteLength;
+    setBaseStatus(`отправка ${Math.round(sent/total*100)}%`);
+    if (ws && ws.bufferedAmount > 1_000_000) await new Promise(r => setTimeout(r, 50));
+  }
+  send({ type: 'file-end', msgId });
+  setBaseStatus('На связи');
+}
+
+function renderMessage(text, who) {
+  const el = document.createElement('div');
+  el.className = 'msg ' + who;
+  el.textContent = text;
+  appendToLog(el);
+}
+function renderFile(file, who) {
+  const el = document.createElement('div');
+  el.className = 'msg file ' + who;
+  const blob = file.blob || file;
+  const url = URL.createObjectURL(blob);
+  const type = file.type || blob.type || '';
+  if (type.startsWith('image/')) {
+    const img = document.createElement('img');
+    img.src = url;
+    img.onload = () => URL.revokeObjectURL(url);
+    el.appendChild(img);
+  } else {
+    const a = document.createElement('a');
+    a.href = url; a.download = file.name || 'file';
+    a.textContent = '📎 ' + (file.name || 'файл');
+    el.appendChild(a);
+  }
+  appendToLog(el);
+}
+function appendToLog(el) {
+  const box = $('messages');
+  box.appendChild(el);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setBaseStatus(s) {
+  baseStatus = s;
+  const el = $('status');
+  el.textContent = s;
+  el.classList.remove('typing');
+}
+function flashStatus(t, ms = 2200) {
+  const el = $('status');
+  el.textContent = t; el.classList.add('typing');
+  clearTimeout(typingTimer);
+  typingTimer = setTimeout(() => { el.textContent = baseStatus; el.classList.remove('typing'); }, ms);
+}
+
+function uid() { return Math.random().toString(36).slice(2, 11); }
+function bytesToB64(u8) {
+  let bin = '';
+  const c = 0x8000;
+  for (let i = 0; i < u8.length; i += c)
+    bin += String.fromCharCode.apply(null, u8.subarray(i, i + c));
+  return btoa(bin);
+}
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+$('copyBtn').addEventListener('click', async () => {
+  const val = $('inviteLink').value;
+  try { await navigator.clipboard.writeText(val); }
+  catch {
+    $('inviteLink').select();
+    document.execCommand('copy');
+  }
+  $('copyBtn').textContent = '✓';
+  setTimeout(() => ($('copyBtn').textContent = 'Копировать'), 1200);
+});
+
+$('leave').addEventListener('click', () => {
+  try { ws && ws.close(); } catch {}
+  history.replaceState(null, '', location.pathname);
   location.reload();
-};
+});
