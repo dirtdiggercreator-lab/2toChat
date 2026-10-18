@@ -107,3 +107,9 @@ header, #inviteBar, #msgForm { flex-shrink: 0; }
 /* --- Стили для времени --- */
 .msg-time { font-size: 10px; opacity: 0.8; margin-top: 4px; text-align: right; letter-spacing: 0.5px; }
 .msg.them .msg-time { text-align: left; }
+
+/* --- ЖЕСТКИЙ ФИКС КЛАВИАТУРЫ И ЭКРАНА --- */
+html, body { height: 100% !important; margin: 0 !important; padding: 0 !important; overflow: hidden !important; }
+#app { position: fixed !important; top: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; }
+#chat { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+#messages { flex: 1; overflow-y: auto; padding-bottom: 20px; }

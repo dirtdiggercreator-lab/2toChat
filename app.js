@@ -365,7 +365,7 @@ if (micBtn) {
       };
       mediaRecorder.start();
       micBtn.classList.add('recording');
-      micBtn.textContent = '⏹';
+      micBtn.textContent = '🔴';
       setBaseStatus('Идёт запись...');
     } catch (err) {
       alert('Нет доступа к микрофону. Разрешите доступ в настройках браузера.');
@@ -401,3 +401,10 @@ function notifyUser(text) {
     new Notification('2chat: Новое сообщение', { body: text || 'Вам пришло сообщение' });
   }
 }
+
+document.getElementById('msgInput').addEventListener('focus', () => {
+  setTimeout(() => {
+    const box = document.getElementById('messages');
+    if (box) box.scrollTop = box.scrollHeight;
+  }, 300);
+});
