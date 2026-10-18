@@ -221,7 +221,7 @@ function renderFile(file, who) {
     const playBtn = document.createElement('button');
     playBtn.type = 'button';
     playBtn.className = 'play-btn';
-    playBtn.textContent = '▶️';
+    playBtn.textContent = '▶';
     
     const progress = document.createElement('input');
     progress.type = 'range';
@@ -233,10 +233,10 @@ function renderFile(file, who) {
     timeLbl.textContent = '0:00';
     
     playBtn.onclick = () => {
-      if (audio.paused) { audio.play(); playBtn.textContent = '⏸'; }
-      else { audio.pause(); playBtn.textContent = '▶️'; }
+      if (audio.paused) { audio.play(); playBtn.textContent = '❚❚'; }
+      else { audio.pause(); playBtn.textContent = '▶'; }
     };
-    audio.onended = () => { playBtn.textContent = '▶️'; progress.value = 0; timeLbl.textContent = '0:00'; };
+    audio.onended = () => { playBtn.textContent = '▶'; progress.value = 0; timeLbl.textContent = '0:00'; };
     audio.ontimeupdate = () => {
       if (!audio.duration) return;
       progress.value = (audio.currentTime / audio.duration) * 100;
@@ -259,7 +259,7 @@ function renderFile(file, who) {
   
   const info = document.createElement('span');
   info.className = 'file-info';
-  info.textContent = name;
+  info.textContent = type.startsWith('audio/') ? 'Голосовое сообщение' : name;
   
   const a = document.createElement('a');
   a.href = url; a.download = name; a.className = 'file-download';
