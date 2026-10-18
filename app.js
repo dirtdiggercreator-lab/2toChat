@@ -44,7 +44,12 @@ async function init() {
 }
 
 function showLobby() { $('lobby').hidden = false; $('chat').hidden = true; }
-function showChat() { $('lobby').hidden = true; $('chat').hidden = false; }
+function showChat() { 
+  $('lobby').hidden = true; $('chat').hidden = false; 
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
 
 async function onHostCreate() {
   try {
@@ -109,7 +114,11 @@ async function handleIncoming(data) {
   if (data.type === 'msg') {
     if (data.id && renderedIds.has(data.id)) return;
     if (data.id) renderedIds.add(data.id);
-    try { renderMessage(await decrypt(cryptoKey, data.iv, data.ct), 'them'); }
+    try { 
+      const text = await decrypt(cryptoKey, data.iv, data.ct);
+      renderMessage(text, 'them');
+      notifyUser(text);
+    }
     catch (err) { renderMessage('[не расшифровано]', 'them'); }
     return;
   }
@@ -362,4 +371,33 @@ if (micBtn) {
       alert('Нет доступа к микрофону. Разрешите доступ в настройках браузера.');
     }
   });
+}
+
+// --- СИСТЕМА УВЕДОМЛЕНИЙ ---
+function playBeep() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+  } catch (e) { console.log('Ошибка звука:', e); }
+}
+
+function notifyUser(text) {
+  if (document.hasFocus()) return; // Не беспокоим, если вкладка открыта
+  playBeep();
+  if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('2chat: Новое сообщение', { body: text || 'Вам пришло сообщение' });
+  }
 }
