@@ -408,3 +408,14 @@ document.getElementById('msgInput').addEventListener('focus', () => {
     if (box) box.scrollTop = box.scrollHeight;
   }, 300);
 });
+
+// Фикс скролла при возврате на вкладку
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    const box = document.getElementById('messages');
+    if (box) {
+      box.style.overflow = 'hidden';
+      setTimeout(() => { box.style.overflow = 'auto'; }, 50);
+    }
+  }
+});
