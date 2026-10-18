@@ -132,3 +132,10 @@ html, body { position: relative !important; overflow: hidden !important; height:
 .msg.them.file { background: #1c212b !important; }
 .msg.file img.file-preview { border-radius: 12px !important; margin: 0; display: block; width: 100%; object-fit: cover; }
 .msg.file .file-footer { padding: 4px 8px 2px 8px; }
+
+/* --- КРАСИВЫЕ КАРТИНКИ --- */
+.msg.file { padding: 4px !important; background: transparent !important; }
+.msg.me.file { background: #4f7cff !important; }
+.msg.them.file { background: #1c212b !important; }
+.msg.file img.file-preview { border-radius: 12px !important; margin: 0; display: block; width: 100%; object-fit: cover; }
+.msg.file .file-footer { padding: 4px 8px 2px 8px; }
