@@ -212,9 +212,46 @@ function renderFile(file, who) {
     video.src = url; video.controls = true; video.className = 'file-preview';
     el.appendChild(video);
   } else if (type.startsWith('audio/')) {
+    const audioWrap = document.createElement('div');
+    audioWrap.className = 'custom-audio';
+    
     const audio = document.createElement('audio');
-    audio.src = url; audio.controls = true; audio.className = 'file-preview';
-    el.appendChild(audio);
+    audio.src = url;
+    
+    const playBtn = document.createElement('button');
+    playBtn.type = 'button';
+    playBtn.className = 'play-btn';
+    playBtn.textContent = '▶️';
+    
+    const progress = document.createElement('input');
+    progress.type = 'range';
+    progress.className = 'audio-progress';
+    progress.value = 0; progress.max = 100;
+    
+    const timeLbl = document.createElement('span');
+    timeLbl.className = 'audio-time';
+    timeLbl.textContent = '0:00';
+    
+    playBtn.onclick = () => {
+      if (audio.paused) { audio.play(); playBtn.textContent = '⏸'; }
+      else { audio.pause(); playBtn.textContent = '▶️'; }
+    };
+    audio.onended = () => { playBtn.textContent = '▶️'; progress.value = 0; timeLbl.textContent = '0:00'; };
+    audio.ontimeupdate = () => {
+      if (!audio.duration) return;
+      progress.value = (audio.currentTime / audio.duration) * 100;
+      const m = Math.floor(audio.currentTime / 60);
+      const s = Math.floor(audio.currentTime % 60).toString().padStart(2, '0');
+      timeLbl.textContent = m + ':' + s;
+    };
+    progress.oninput = () => {
+      if (audio.duration) audio.currentTime = (progress.value / 100) * audio.duration;
+    };
+    
+    audioWrap.appendChild(playBtn);
+    audioWrap.appendChild(progress);
+    audioWrap.appendChild(timeLbl);
+    el.appendChild(audioWrap);
   }
 
   const footer = document.createElement('div');
