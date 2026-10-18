@@ -172,8 +172,43 @@ $('fileInput').addEventListener('change', async e => {
   e.target.value = '';
   if (!file) return;
   if (file.size > FILE_MAX) { alert('Максимум 8 МБ'); return; }
-  try { await sendFile(file); } catch (err) { alert('Ошибка: ' + err.message); }
+  try { 
+    let finalFile = file;
+    if (file.type.startsWith('image/')) {
+      setBaseStatus('Сжимаю картинку...');
+      finalFile = await compressImage(file);
+      setBaseStatus('На связи');
+    }
+    await sendFile(finalFile); 
+  } catch (err) { alert('Ошибка: ' + err.message); }
 });
+
+
+async function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) return resolve(file);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+      const MAX = 1200;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round((height * MAX) / width); width = MAX; }
+        else { width = Math.round((width * MAX) / height); height = MAX; }
+      }
+      canvas.width = width; canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (!blob) return resolve(file);
+        resolve(new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".jpg", { type: 'image/jpeg' }));
+      }, 'image/jpeg', 0.8);
+    };
+    img.onerror = () => resolve(file);
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 async function sendFile(file) {
   const msgId = Math.random().toString(36).slice(2, 11);
